@@ -14,7 +14,6 @@ consumer_secret = twitter_config['consumer_secret']
 access_token = twitter_config['access_token']
 access_token_secret = twitter_config['access_token_secret']
 
-
 if ARGV.length < 1
   puts "usage: #{$0} <twitter_screen_name>"
   exit
@@ -50,9 +49,14 @@ end
 # user_info_initialized set to FALSE
 # partial_following_screen_names=[]
 # partial_following_screen_names.push[ids] iff. screen_names are not present in partial_following_screen_names
+usersColl = db.collection("users")
 
-followers = Twitter.follower_ids(TWITTER_SCREEN_NAME, :cursor => -1, :stringify_ids => true)
-followers.ids.each do |f|
-  pp f
+cursor = "-1"
+while cursor != 0 do
+  followers = Twitter.follower_ids(TWITTER_SCREEN_NAME, :cursor => cursor, :stringify_ids => true)
+  followers.ids.each do |id|
+    pp id
+  end
+  cursor = followers.next_cursor
 end
 
