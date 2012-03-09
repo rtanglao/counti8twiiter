@@ -26,7 +26,7 @@ Twitter.configure do |config|
   config.oauth_token_secret = access_token_secret
 end
 
-TWITTER_SCREEN_NAME = ARGV[0]
+TWITTER_SCREEN_NAME = ARGV[0].downcase
 
 MONGO_HOST = ENV["MONGO_HOST"]
 raise(StandardError,"Set Mongo hostname in ENV: 'MONGO_HOST'") if !MONGO_HOST
@@ -46,16 +46,27 @@ if MONGO_USER
   end
 end
 
-# user_info_initialized set to FALSE
-# partial_following_screen_names=[]
-# partial_following_screen_names.push[ids] iff. screen_names are not present in partial_following_screen_names
 usersColl = db.collection("users")
 
 cursor = "-1"
 while cursor != 0 do
   followers = Twitter.follower_ids(TWITTER_SCREEN_NAME, :cursor => cursor, :stringify_ids => true)
   followers.ids.each do |id|
-    pp id
+    $stderr.printf("FOUND user id:%s\n", id)
+    existingUser =  usersColl.find_one("id_str" => id)
+    if existingUser      
+      if !existingUser["partial_following_screen_names"].include?(TWITTER_SCREEN_NAME)
+        existingUser["partial_following_screen_names"].push(TWITTER_SCREEN_NAME)
+        $stderr.printf("UPDATING user id:%s ADDING screen_name:%s\n",id, TWITTER_SCREEN_NAME )
+        usersColl.update({"id_str" =>id}, existingUser)
+      else
+        $stderr.printf("NOT UPDATING user id:%s because screen_name:%s is PRESENT\n",id, TWITTER_SCREEN_NAME )
+      end
+    else
+      $stderr.printf("INSERTING user id:%s\n",id)
+      user = { "id_str" => id, "user_info_initialized" => false,  "partial_following_screen_names" => [TWITTER_SCREEN_NAME]}
+      usersColl.insert(user)
+    end
   end
   cursor = followers.next_cursor
 end
