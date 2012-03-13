@@ -33,10 +33,25 @@ if MONGO_USER
 end
 
 usersColl = db.collection("users")
+printf("screen_name, location, created_at, description\n")
 usersColl.find({"partial_following_screen_names" => TWITTER_SCREEN_NAME },
                 :fields => ["created_at", "description", "location", "screen_name"]
                 ).each do |u|
-  pp u
+  if !u["location"]
+    u["location"] = ''
+  else
+     u["location"].gsub!(/[[:cntrl:]]/,' ')
+  end
+  if !u["description"]
+    u["description"] = ''
+  else
+    u["description"].gsub!(/[[:cntrl:]]/,' ')
+  end
+  if !u["screen_name"]
+    next
+  end
+  printf("%s,%s,%s,%s\n", u["screen_name"], u["location"].gsub(',',';'), u["created_at"].to_s, 
+    u["description"].gsub(',',';'))
 end
 
 
