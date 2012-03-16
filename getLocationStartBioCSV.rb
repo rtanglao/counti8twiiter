@@ -35,7 +35,7 @@ end
 usersColl = db.collection("users")
 printf("screen_name, location, created_at, description\n")
 usersColl.find({"partial_following_screen_names" => TWITTER_SCREEN_NAME },
-                :fields => ["created_at", "description", "location", "screen_name"]
+                :fields => ["created_at", "description", "location", "screen_name", "protected"]
                 ).each do |u|
   if !u["location"]
     u["location"] = ''
@@ -47,7 +47,7 @@ usersColl.find({"partial_following_screen_names" => TWITTER_SCREEN_NAME },
   else
     u["description"].gsub!(/[[:cntrl:]]/,' ')
   end
-  if !u["screen_name"]
+  if !u["screen_name"] || u["protected"]
     next
   end
   printf("%s,%s,%s,%s\n", u["screen_name"], u["location"].gsub(',',';'), u["created_at"].to_s, 
