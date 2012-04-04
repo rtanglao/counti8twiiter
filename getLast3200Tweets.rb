@@ -52,6 +52,7 @@ batch = 1
 num_tweets = 0
 lowest_tweet_id = 0
 loop do 
+  $stderr.printf("LOWEST tweet id:%s\n",lowest_tweet_id.to_s)
   param_hash = {:count => 200, :trim_user => true, :include_rts => true,
     :include_entities => true}
   if batch == 1
@@ -59,32 +60,43 @@ loop do
   else
     param_hash[:max_id] = lowest_tweet_id - 1
   end
-  Twitter.user_timeline(TWITTER_SCREEN_NAME, param_hash).each do |tweet|
-    t = tweet.attrs
-    id = t["id"]
-    if lowest_tweet_id == 0
-      lowest_tweet_id = id
-    elsif id < lowest_tweet_id
-      lowest_tweet_id = id
+  tried_previously = false  
+  begin 
+    Twitter.user_timeline(TWITTER_SCREEN_NAME, param_hash).each do |tweet|
+      t = tweet.attrs
+      id = t["id"]
+      if lowest_tweet_id == 0
+        lowest_tweet_id = id
+      elsif id < lowest_tweet_id
+        lowest_tweet_id = id
+      end
+      id_str = t["id_str"]
+      existingTweet =  tweetsColl.find_one("id_str" => id_str)
+      if existingTweet      
+        $stderr.printf("UPDATING tweet id:%s\n",id_str)
+        tweetsColl.update({"id_str" =>id_str}, t)
+      else
+        $stderr.printf("INSERTING tweet id:%s\n",id_str)
+        tweetsColl.insert(t)
+      end
     end
-    id_str = t["id_str"]
-    existingTweet =  tweetsColl.find_one("id_str" => id_str)
-    if existingTweet      
-      $stderr.printf("UPDATING tweet id:%s\n",id_str)
-      tweetsColl.update({"id_str" =>id_str}, t)
+    if Twitter.rate_limit_status.remaining_hits == 1
+      sleep 60 * 60
+    end
+    num_tweets += 200
+    batch += 1
+    if num_tweets == 3200 
+      break
+    end
+  rescue Twitter::Error::ServiceUnavailable, Twitter::Error::BadGateway
+    if tried_previously
+      raise
     else
-      $stderr.printf("INSERTING tweet id:%s\n",id_str)
-      tweetsColl.insert(t)
+      tried_previously = true
+      sleep(30)
+      retry
     end
-  end
-  if Twitter.rate_limit_status.remaining_hits == 1
-    sleep 60 * 60
-  end
-  num_tweets += 200
-  batch += 1
-  if num_tweets == 3200 
-    break
-  end
+  end   
 end
 
 
