@@ -12,7 +12,7 @@ require 'builder'
 
 class Grapher
   
-  attr_reader :data, :xml, :db, :usersColl
+  attr_reader :data, :xml, :db, :usersColl, :screen_names
 
   def initialize
     @data = {:nodes => [], :edges => []}
@@ -27,6 +27,7 @@ class Grapher
       end
     end
     @usersColl = db.collection("users")
+    @screen_names = []
   end
 
   def parse_followers_of_translink_greenestcity()
@@ -35,6 +36,11 @@ class Grapher
     @usersColl.find({"partial_following_screen_names" =>  { "$all" => ["translink", "greenestcity"]}}, 
                     :fields => ["screen_name"]).each do |user|
       screen_name = user["screen_name"].downcase
+      if @screen_names.include?(screen_name)
+        next
+      else
+        @screen_names.push(screen_name)
+      end
       $stderr.printf("screen_name:%s\n", screen_name)
       add_node(screen_name)
       $stderr.printf("ADDED NODE for screen_name:%s\n", screen_name)
@@ -78,15 +84,11 @@ class Grapher
   private
 
   def add_node(node)
-    @data[:nodes] << {:id => node, :label => node} if data[:nodes].select{|node| node[:id] == node}.empty?
+    @data[:nodes] << {:id => node, :label => node}
   end
   
   def add_edge(node1, node2)
-    if edge = @data[:edges].select{|edge| edge[:id] == "#{node1}-#{node2}"}.pop
-      edge[:weight] += 1
-    else
       @data[:edges] << {:id => "#{node1}-#{node2}", :source => node1, :target => node2, :weight => 1}
-    end
   end
 end
 
