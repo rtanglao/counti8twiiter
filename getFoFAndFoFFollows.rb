@@ -19,6 +19,12 @@ if ARGV.length < 1
   exit
 end
 
+def sleep_if_necessary()
+  if Twitter.rate_limit_status.remaining_hits <= 1
+    $stderr.printf("API THROTTLE SLEEP\n")
+    sleep 60 * 60
+  end
+end
 Twitter.configure do |config|
   config.consumer_key = consumer_key
   config.consumer_secret = consumer_secret
@@ -48,22 +54,44 @@ end
 
 def getFollowersOf(follower_id, synthetic_followers_of_followers, usersColl)
   new_followers_of_follower = []
-  followers_of_follower_cursor = "-1"
+  followers_of_follower_cursor = -1
+  return_because_follower_is_protected = false
   while followers_of_follower_cursor != 0 do
-    followers_of_follower = Twitter.follower_ids(:user_id => follower_id, :cursor => followers_of_follower_cursor)
-    followers_of_follower.ids.each do |id|
-      if synthetic_followers_of_followers.include?(id)
-        next
+    $stderr.printf("followers_of_follower_cursor:%d\n", followers_of_follower_cursor)
+    tried_previously = false
+    sleep_if_necessary()
+    begin
+      followers_of_follower = Twitter.follower_ids(:user_id => follower_id, :cursor => followers_of_follower_cursor)
+      followers_of_follower.ids.each do |id|
+        if synthetic_followers_of_followers.include?(id)
+          next
+        end
+        $stderr.printf("NEW follower of follower:%d IS:%d\n", follower_id, id)
+        new_followers_of_follower.push(id)
+        existingFollowerOfFollowerUser =  usersColl.find_one("id_str" => id.to_s)
+        if !existingFollowerOfFollowerUser      
+          $stderr.printf("INSERTING FOLLOWER of FOLLOWER user id:%s\n", id.to_s)
+          followerOfFollowerUser = { "id_str" => id.to_s, "user_info_initialized" => false,  "partial_following_screen_names" => []}
+          usersColl.insert(followerOfFollowerUser)
+        end
       end
-      $stderr.printf("NEW follower of follower:%d IS:%d\n", follower_id, id)
-      new_followers_of_follower.push(id)
-      existingFollowerOfFollowerUser =  usersColl.find_one("id_str" => id.to_s)
-      if !existingFollowerOfFollowerUser      
-        $stderr.printf("INSERTING FOLLOWER of FOLLOWER user id:%s\n", id.to_s)
-        followerOfFollowerUser = { "id_str" => id.to_s, "user_info_initialized" => false,  "partial_following_screen_names" => []}
-        usersColl.insert(followerOfFollowerUser)
+    rescue Twitter::Error::ServiceUnavailable, Twitter::Error::BadGateway
+      if tried_previously
+        raise
+      else
+        tried_previously = true
+        $stderr.printf("RETRY SLEEP\n")
+        sleep(60)
+        retry
       end
+    rescue Twitter::Error::Unauthorized
+      $stderr.printf("Unauthorized to get followers of follower_id:%d\n", follower_id)
+      return_because_follower_is_protected = true
     end
+    if return_because_follower_is_protected 
+      break
+    end
+    followers_of_follower_cursor =  followers_of_follower.next_cursor
   end
   return new_followers_of_follower
 end
@@ -72,23 +100,48 @@ def getFollowsOfFollowersOfFollowers(new_synthetic_followers_of_followers,
       synthetic_follows_of_followers_of_followers, usersColl)
   new_follows_of_followers_of_followers = []
   new_synthetic_followers_of_followers.each do |id|
-    follows_of_follower_of_follower_cursor = "-1"
-    follows_of_follower_of_follower = Twitter.friends_ids(:user_id => id, :cursor => follows_of_follower_of_follower_cursor)
-    follows_of_follower_of_follower.ids.each do |follow_id| 
-      if synthetic_follows_of_followers_of_followers.include?(follow_id)
-        next
+    follows_of_follower_of_follower_cursor = -1
+    return_because_follower_of_follower_is_protected = false
+    while follows_of_follower_of_follower_cursor != 0 do
+      $stderr.printf("follows_of_follower_of_follower_cursor:%d\n", follows_of_follower_of_follower_cursor)
+      tried_previously = false
+      sleep_if_necessary()
+      begin
+        follows_of_follower_of_follower = Twitter.friend_ids(:user_id => id, :cursor => follows_of_follower_of_follower_cursor)
+        follows_of_follower_of_follower.ids.each do |follow_id| 
+          if synthetic_follows_of_followers_of_followers.include?(follow_id)
+            next
+          end
+          $stderr.printf("NEW follow of follower of follower:%d IS:%d\n", id, follow_id)
+          new_follows_of_followers_of_followers.push(follow_id)
+          existingFollowOfFollowerOfFollowerUser =  usersColl.find_one("id_str" => follow_id.to_s)
+          if !existingFollowOfFollowerOfFollowerUser      
+            $stderr.printf("INSERTING FOLLOW of FOLLOWER of FOLLOWER user id:%s\n", follow_id.to_s)
+            followOfFollowerOfFollowerUser = { "id_str" => follow_id.to_s, "user_info_initialized" => false,  
+              "partial_following_screen_names" => []}
+            usersColl.insert(followOfFollowerOfFollowerUser)
+          end
+        end
+      rescue Twitter::Error::ServiceUnavailable, Twitter::Error::BadGateway
+        if tried_previously
+          raise
+        else
+          tried_previously = true
+          $stderr.printf("RETRY SLEEP\n")
+          sleep(60)
+          retry
+        end
+      rescue Twitter::Error::Unauthorized
+        $stderr.printf("Unauthorized to get follows of followers of followers of user_id:%d\n", id)
+        return_because_follower_of_follower_is_protected = true
       end
-      $stderr.printf("NEW follow of follower of follower:%d IS:%d\n", id, follow_id)
-      new_follows_of_followers_of_followers.push(follow_id)
-      existingFollowOfFollowerOfFollowerUser =  usersColl.find_one("id_str" => follow_id.to_s)
-      if !existingFollowFollowerOfFollowerUser      
-        $stderr.printf("INSERTING FOLLOW of FOLLOWER of FOLLOWER user id:%s\n", follow_id.to_s)
-        followOfFollowerOfFollowerUser = { "id_str" => follow_id.to_s, "user_info_initialized" => false,  
-          "partial_following_screen_names" => []}
-        usersColl.insert(followOfFollowerOfFollowerUser)
+      if return_because_follower_of_follower_is_protected
+        break
       end
+      follows_of_follower_of_follower_cursor = follows_of_follower_of_follower.next_cursor
     end
   end
+
   return new_follows_of_followers_of_follower
 end
 
@@ -104,37 +157,51 @@ synthetic_followers_of_followers = []
 synthetic_followers = []
 synthetic_follows_of_followers_of_followers = []
 
-follower_cursor = "-1"
-while follower_cursor != 0 do
-  followers = Twitter.follower_ids(TWITTER_SCREEN_NAME, :cursor => follower_cursor)
-  followers.ids.each do |id|
-    $stderr.printf("FOUND follower user id:%s\n", id.to_s)
-    if !synthetic_followers.include?(id)
-      synthetic_followers.push(id)
-    end
-    existingFollowerUser =  usersColl.find_one("id_str" => id.to_s)
-    if existingFollowerUser      
-      if !existingFollowerUser["partial_following_screen_names"].include?(TWITTER_SCREEN_NAME)
-        existingFollowerUser["partial_following_screen_names"].push(TWITTER_SCREEN_NAME)
-        $stderr.printf("UPDATING user id:%s ADDING screen_name:%s\n",id.to_s, TWITTER_SCREEN_NAME )
-        usersColl.update({"id_str" =>id.to_s}, existingFollowerUser)
-      else
-        $stderr.printf("NOT UPDATING Follower user id:%s because screen_name:%s is PRESENT\n",id.to_s, TWITTER_SCREEN_NAME )
-      end
-    else
-      $stderr.printf("INSERTING user id:%s\n",id.to_s)
-      followerUser = { "id_str" => id.to_s, "user_info_initialized" => false,  "partial_following_screen_names" => [TWITTER_SCREEN_NAME]}
-      usersColl.insert(followerUser)
-    end
-    new_synthetic_followers_of_followers = getFollowersOf(id, synthetic_followers_of_followers, usersColl)
-    synthetic_followers_of_followers.concat(new_synthetic_followers_of_followers)
-    new_synthetic_follows_of_followers_of_followers = getFollowsOfFollowersOfFollowers(new_synthetic_followers_of_followers,
-      synthetic_follows_of_followers_of_followers, usersColl)
-    follows_of_followers_of_followers.concat(new_synthetic_follows_of_followers_of_followers)
-  end
-  follower_cursor = followers.next_cursor
-end
+follower_cursor = -1
 
+while follower_cursor != 0 do
+  $stderr.printf("follower_cursor:%d\n", follower_cursor)
+  sleep_if_necessary()
+  tried_previously = false
+  begin
+    followers = Twitter.follower_ids(TWITTER_SCREEN_NAME, :cursor => follower_cursor)
+    followers.ids.each do |id|
+      $stderr.printf("FOUND follower user id:%s\n", id.to_s)
+      if !synthetic_followers.include?(id)
+        synthetic_followers.push(id)
+      end
+      existingFollowerUser =  usersColl.find_one("id_str" => id.to_s)
+      if existingFollowerUser      
+        if !existingFollowerUser["partial_following_screen_names"].include?(TWITTER_SCREEN_NAME)
+          existingFollowerUser["partial_following_screen_names"].push(TWITTER_SCREEN_NAME)
+          $stderr.printf("UPDATING user id:%s ADDING screen_name:%s\n",id.to_s, TWITTER_SCREEN_NAME )
+          usersColl.update({"id_str" =>id.to_s}, existingFollowerUser)
+        else
+          $stderr.printf("NOT UPDATING Follower user id:%s because screen_name:%s is PRESENT\n",id.to_s, TWITTER_SCREEN_NAME )
+        end
+      else
+        $stderr.printf("INSERTING user id:%s\n",id.to_s)
+        followerUser = { "id_str" => id.to_s, "user_info_initialized" => false,  "partial_following_screen_names" => [TWITTER_SCREEN_NAME]}
+        usersColl.insert(followerUser)
+      end
+      new_synthetic_followers_of_followers = getFollowersOf(id, synthetic_followers_of_followers, usersColl)
+      synthetic_followers_of_followers.concat(new_synthetic_followers_of_followers)
+      new_synthetic_follows_of_followers_of_followers = getFollowsOfFollowersOfFollowers(new_synthetic_followers_of_followers,
+        synthetic_follows_of_followers_of_followers, usersColl)
+      follows_of_followers_of_followers.concat(new_synthetic_follows_of_followers_of_followers)
+    end    
+  rescue Twitter::Error::ServiceUnavailable, Twitter::Error::BadGateway
+    if tried_previously
+      raise
+    else
+      tried_previously = true
+      $stderr.printf("RETRY SLEEP\n")
+      sleep(60)
+      retry
+    end
+  end    
+  follower_cursor = followers.next_cursor 
+end
 existingUser["synthetic_followers_of_followers"] = synthetic_followers_of_followers
 existingUser["synthetic_followers"] = synthetic_followers
 existingUser["synthetic_follows_of_followers_of_followers"] = synthetic_follows_of_followers_of_followers 
