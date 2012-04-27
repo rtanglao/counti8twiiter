@@ -30,9 +30,9 @@ class Grapher
     @screen_names = []
   end
 
-  def parse_followers_of_translink_greenestcity()
+  def parse_followers_of_translink_travelsmart()
     add_node("translink")
-    add_node("greenestcity")
+    add_node("travelsmart")
     @usersColl.find({"partial_following_screen_names" =>  { "$all" => ["translink", "travelsmart"]}}, 
                     :fields => ["screen_name"]).each do |user|
       screen_name = user["screen_name"].downcase
@@ -46,8 +46,8 @@ class Grapher
       $stderr.printf("ADDED NODE for screen_name:%s\n", screen_name)
       add_edge(screen_name, "translink")
       $stderr.printf("ADDED EDGE for screen_name:%s to translink edge\n", screen_name)
-      add_edge(screen_name, "greenestcity")
-      $stderr.printf("ADDED EDGE for screen_name:%s to greenestcity edge\n", screen_name)
+      add_edge(screen_name, "travelsmart")
+      $stderr.printf("ADDED EDGE for screen_name:%s to travelsmart edge\n", screen_name)
     end
   end
 
@@ -56,7 +56,7 @@ class Grapher
     @xml.gexf(:xmlns => "http://www.gexf.net/1.2draft", :version => "1.2") do
       @xml.meta(:lastmodifieddate => Time.now.strftime("%Y-%m-%d")) do
         @xml.creator "Roland"
-        @xml.description "translinkAndTravleSmartFollowers"
+        @xml.description "translinkAndTravelSmartFollowers"
       end
       @xml.graph(:mode => "static", :defaultedgetype => "directed") do
         @xml.nodes(:count => @data[:nodes].size) do
@@ -102,7 +102,7 @@ TWITTER_DB = ENV["TWITTER_DB"]
 raise(StandardError,"Set Mongo flickr database name in ENV: 'TWITTER_DB'") if !TWITTER_DB
 
 graph = Grapher.new
-graph.parse_followers_of_translink_greenestcity()
+graph.parse_followers_of_translink_travelsmart()
 #p graph.data
 
 File.open('followersOfTranslinkAndTravelSmart.gexf', "w") do |f|
