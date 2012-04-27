@@ -49,7 +49,7 @@ tweetsColl.find({"user.id" => 61617150}, :fields => ["id", "entities"]).each do 
       expanded_url = url
     end
     $stderr.printf("tweet id:%d mentions url:%s, display url:%s, expanded url:%s\n", id, u["url"], u["display_url"], expanded_url)    
-    if expanded_url.include?("cCustomerComplaint")
+    if expanded_url && expanded_url.include?("cCustomerComplaint")
       $stderr.printf("tweet:%d has cCustomerComplaint in url\n", id)
       num_customer_feedback_url_mentions += 1
     end
