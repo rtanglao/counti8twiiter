@@ -53,7 +53,7 @@ num_tweets = 0
 lowest_tweet_id = 0
 previous_lowest_tweet_id = 0
 loop do 
-  $stderr.printf("LOWEST tweet id:%s\n",lowest_tweet_id.to_s)
+  $stderr.printf("LOWEST tweet id:%s, batch:%d\n",lowest_tweet_id.to_s, batch)
   param_hash = {:count => 200, :trim_user => true, :include_rts => true,
     :include_entities => true, :contributor_details => true}
   if batch == 1
@@ -82,6 +82,7 @@ loop do
       end
     end
     if Twitter.rate_limit_status.remaining_hits == 1
+      $stderr.print("rate limited, sleeping for an hour\n")
       sleep 60 * 60
     end
     num_tweets += 200
@@ -98,11 +99,13 @@ loop do
       raise
     else
       tried_previously = true
+      $stderr.printf("twitter ruby exception error, re-trying in 30 seconds\n")
       sleep(30)
       retry
     end
   end   
 end
+$stderr.printf("DONE!\n")
 
 
 
